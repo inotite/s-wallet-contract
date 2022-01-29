@@ -1,38 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-
-contract Allowance is Ownable {
-    mapping(address => uint256) public allowance;
-
-    event AllowanceChanged(
-        address indexed _forWho,
-        address indexed _by,
-        uint256 _oldAmount,
-        uint256 _newAmount
-    );
-
-    function addAllowance(address _who, uint256 _amount) public onlyOwner {
-        emit AllowanceChanged(_who, msg.sender, allowance[_who], _amount);
-        allowance[_who] = _amount;
-    }
-
-    function reduceAllowance(address _who, uint256 _amount) internal {
-        emit AllowanceChanged(
-            _who,
-            msg.sender,
-            allowance[_who],
-            allowance[_who] - _amount
-        );
-        allowance[_who] -= _amount;
-    }
-}
+import "./Allowance.sol";
 
 contract SimpleWallet is Allowance {
+    event MoneySent(address indexed _beneficiary, uint256 _amount);
+    event MoneyReceived(address indexed _from, uint256 _amount);
+
     modifier ownerOrAllowed(uint256 _amount) {
         require(
-            owner() == msg.sender || allowance[msg.sender] >= _amount,
+            owner() == _msgSender() || allowance[_msgSender()] >= _amount,
             "You are not allowed"
         );
         _;
@@ -40,7 +17,9 @@ contract SimpleWallet is Allowance {
 
     constructor() {}
 
-    receive() external payable {}
+    receive() external payable {
+        emit MoneyReceived(_msgSender(), msg.value);
+    }
 
     fallback() external payable {}
 
@@ -50,10 +29,15 @@ contract SimpleWallet is Allowance {
     {
         require(_amount <= address(this).balance, "not enough funds");
 
-        if (owner() != msg.sender) {
-            reduceAllowance(msg.sender, _amount);
+        if (owner() != _msgSender()) {
+            reduceAllowance(_msgSender(), _amount);
         }
         (bool sent, ) = _to.call{value: _amount}("");
         require(sent, "Failed to send ether");
+        emit MoneySent(_to, _amount);
+    }
+
+    function renounceOwnership() public view override onlyOwner {
+        revert("Can't renounce ownership here");
     }
 }
